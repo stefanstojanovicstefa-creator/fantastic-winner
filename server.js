@@ -43,11 +43,18 @@ async function sendVapiCommand(callId, command, data) {
 
 // Webhook endpoint
 app.post('/vapi-webhook', async (req, res) => {
-  // 🔥 KLJUČNO: Loguj ceo body da vidiš šta Vapi šalje
+  // 🔥 KLJUČNO: Vapi šalje podatke u req.body.message
+  const message = req.body?.message;
+  if (!message) {
+    console.error('❌ [ERROR] No message in webhook payload');
+    return res.status(400).send('Bad Request: No message');
+  }
+
+  // 🔥 KLJUČNO: event = message.type, callId = message.call.id
+  const event = message.type;
+  const callId = message.call?.id;
+
   console.log('📡 [RAW WEBHOOK BODY]', JSON.stringify(req.body, null, 2));
-
-  const { event, callId } = req.body;
-
   console.log(`📡 [PARSED] event: ${event}, callId: ${callId}`);
 
   if (!event || !callId) {
@@ -55,7 +62,7 @@ app.post('/vapi-webhook', async (req, res) => {
     return res.status(400).send('Bad Request: Missing event or callId');
   }
 
-  if (event === 'call.started') {
+  if (event === 'status-update' && message.status === 'in-progress') {
     console.log(`📞 [CALL STARTED] Call ${callId} has started. Starting 15s timer...`);
 
     // Pali timer od 15 sekundi (za test)
@@ -90,7 +97,7 @@ app.post('/vapi-webhook', async (req, res) => {
   }
 
   // Ako se poziv završi, poništi timer
-  if (event === 'call.ended' || event === 'call.transferred') {
+  if (event === 'status-update' && message.status === 'ended') {
     const timer = callTimers.get(callId);
     if (timer) {
       clearTimeout(timer);
