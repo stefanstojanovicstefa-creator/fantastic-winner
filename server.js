@@ -62,6 +62,7 @@ app.post('/vapi-webhook', async (req, res) => {
     return res.status(400).send('Bad Request: Missing event or callId');
   }
 
+  // 🔥 KLJUČNO: Detektuj call.started event
   if (event === 'status-update' && message.status === 'in-progress') {
     console.log(`📞 [CALL STARTED] Call ${callId} has started. Starting 15s timer...`);
 
@@ -78,7 +79,7 @@ app.post('/vapi-webhook', async (req, res) => {
       // 2. Sačekaj 2 sekunde da poruka zvuči prirodno
       setTimeout(async () => {
         console.log(`🔀 [TRANSFER] Attempting to transfer call ${callId} to ILU...`);
-        // 3. Transferuj na ILU
+        // 3. Transferuj na ILU preko Vapi transfer tool-a
         await sendVapiCommand(callId, 'transfer', {
           to: "+381637434108",
           whisper: "TEST CALL: Lead iz {{industry}}. Ime: {{firstName}}.",
@@ -92,7 +93,7 @@ app.post('/vapi-webhook', async (req, res) => {
     // Pali hard limit od 30 sekundi (auto hangup)
     setTimeout(() => {
       console.log(`🛑 [HARD LIMIT] 30 seconds reached for call ${callId}. Ending call.`);
-      sendVapiCommand(callId, 'end', {});
+      sendVapiCommand(callId, 'hangup', {});
     }, 30000);
   }
 
