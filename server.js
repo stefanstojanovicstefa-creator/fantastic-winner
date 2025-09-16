@@ -62,8 +62,8 @@ app.post('/vapi-webhook', async (req, res) => {
     return res.status(400).send('Bad Request: Missing event or callId');
   }
 
-  // 🔥 KLJUČNO: Detektuj call.started event
-  if (event === 'status-update' && message.status === 'in-progress') {
+  // 🔥 KLJUČNO: Detektuj call.started event (queued ili in-progress)
+  if (event === 'status-update' && (message.status === 'queued' || message.status === 'in-progress')) {
     console.log(`📞 [CALL STARTED] Call ${callId} has started. Starting 15s timer...`);
 
     // Pali timer od 15 sekundi (za test)
