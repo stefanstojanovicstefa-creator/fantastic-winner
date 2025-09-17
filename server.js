@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 const express = require('express');
 const fetch = require('node-fetch');
 
@@ -57,6 +58,7 @@ app.get('/', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`✅ Server pokrenut na portu ${PORT}`);
+=======
 const express = require('express');
 const fetch = require('node-fetch');
 
@@ -116,6 +118,5 @@ app.get('/', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`✅ Server pokrenut na portu ${PORT}`);
-
 >>>>>>> e846ee62ee3bc210cdc0972dc93d8e36fe24e182
 });
