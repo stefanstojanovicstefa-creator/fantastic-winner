@@ -1,16 +1,12 @@
 {
-  "name": "velpi-timeout-server",
+  "name": "vapi-transfer",
   "version": "1.0.0",
-  "description": "Server for triggering Velpi timeout and transfer at 2:45 minutes",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "axios": "^1.6.0"
-  },
-  "engines": {
-    "node": ">=18.0.0"
+    "node-fetch": "^2.6.1"
   }
 }
