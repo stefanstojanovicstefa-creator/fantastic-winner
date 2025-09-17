@@ -2,12 +2,14 @@
 const express = require('express');
 const app = express();
 
+// 🔥 OBAVEZNO: Dodaj JSON parser
 app.use(express.json());
 
 // Webhook endpoint
 app.post('/vapi-webhook', async (req, res) => {
   const request = req.body;
 
+  // ✅ Sada će ovo raditi
   console.log('📡 [WEBHOOK]', request.type);
 
   // ✅ Ako Vapi traži destinaciju za transfer
@@ -23,9 +25,6 @@ app.post('/vapi-webhook', async (req, res) => {
     });
   }
 
-  // ✅ Ako je poziv počeo — NE reagujemo više ovde
-  // Jer tool mora da se aktivira iz asistenta, ne iz backenda
-
   res.status(200).send('OK');
 });
 
@@ -34,7 +33,7 @@ app.get('/', (req, res) => {
   res.status(200).send('🚀 Vapi Transfer Server is running!');
 });
 
-// Start server
+// Start server - OBAVEZNO bind na 0.0.0.0 i process.env.PORT
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ [SERVER] Running on port ${PORT}`);
