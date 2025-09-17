@@ -3,22 +3,17 @@ const express = require('express');
 const axios = require('axios');
 const app = express();
 
-// 🔥 KLJUČNO: Parsiraj JSON body
 app.use(express.json({ type: 'application/json' }));
 
 // Mapa za čuvanje timer-a po callId
 const callTimers = new Map();
 
-// Tvoj Vapi API ključ i base URL
-const VELPI_API_KEY = 'vk-zN2YzZjM2ItNjEwYS00ODZlLTk1MjctZmM5MjQ4YjYwMjJlLWIxNmU0ZGU3';
+// 🔑 Vapi API config
+const VELPI_API_KEY = 'vk-xxxxxx'; // stavi svoj pravi ključ
 const VELPI_API_URL = 'https://api.vapi.ai/call';
 
-// Funkcija za slanje komande Vapi-ju
 async function sendVapiCommand(callId, command, data) {
-  if (!callId) {
-    console.error('❌ [ERROR] callId is missing! Cannot send command.');
-    return;
-  }
+  if (!callId) return;
 
   try {
     const response = await axios.post(
@@ -34,89 +29,80 @@ async function sendVapiCommand(callId, command, data) {
     console.log(`✅ [VAPI] ${command} sent for call ${callId}`, response.data);
     return response.data;
   } catch (error) {
-    console.error(`❌ [VAPI ERROR] Failed to send ${command} for call ${callId}:`, error.message);
-    if (error.response) {
-      console.error(`Status: ${error.response.status}`, error.response.data);
-    }
+    console.error(`❌ [VAPI ERROR] ${command} for call ${callId}:`, error.message);
+    if (error.response) console.error(error.response.data);
   }
 }
 
 // Webhook endpoint
 app.post('/vapi-webhook', async (req, res) => {
-  // 🔥 KLJUČNO: Vapi šalje podatke u req.body.message
   const message = req.body?.message;
-  if (!message) {
-    console.error('❌ [ERROR] No message in webhook payload');
-    return res.status(400).send('Bad Request: No message');
-  }
+  if (!message) return res.status(400).send('No message');
 
-  // 🔥 KLJUČNO: event = message.type, callId = message.call.id
   const event = message.type;
   const callId = message.call?.id;
 
-  console.log('📡 [RAW WEBHOOK BODY]', JSON.stringify(req.body, null, 2));
-  console.log(`📡 [PARSED] event: ${event}, callId: ${callId}`);
+  console.log(`📡 [EVENT] ${event} | callId: ${callId}`);
 
-  if (!event || !callId) {
-    console.error('❌ [ERROR] Missing event or callId in webhook payload');
-    return res.status(400).send('Bad Request: Missing event or callId');
-  }
+  if (!event || !callId) return res.status(400).send('Missing event or callId');
 
-  // 🔥 KLJUČNO: Detektuj call.started event (queued ili in-progress)
-  if (event === 'status-update' && (message.status === 'queued' || message.status === 'in-progress')) {
-    console.log(`📞 [CALL STARTED] Call ${callId} has started. Starting 15s timer...`);
+  // ✅ Kada poziv krene (queued ili in-progress)
+  if (
+    event === 'status-update' &&
+    (message.status === 'queued' || message.status === 'in-progress')
+  ) {
+    console.log(`📞 [CALL STARTED] ${callId}. Palim timere...`);
 
-    // Pali timer od 15 sekundi (za test)
-    const timer = setTimeout(async () => {
-      console.log(`⏰ [TIMER EXPIRED] 15 seconds passed for call ${callId}. Triggering transfer sequence...`);
+    // 1. Timer za soft transfer (165s)
+    const transferTimer = setTimeout(async () => {
+      console.log(`⏰ [SOFT TRANSFER] 165s prošlo za ${callId}. Kažem poruku + transfer.`);
 
-      // 1. Kaži fiksnu poruku
+      // AI kaže fiksnu poruku
       await sendVapiCommand(callId, 'say', {
-        message: "Ćao {{firstName}}, da ti ne dužim — mislim da će ti moj kolega Ilija reći sve što ti treba mnogo bolje. Sad ću te prebaciti na njega.",
-        type: "text",
+        message:
+          "Ćao {{firstName}}, da ti ne dužim — mislim da će ti moj kolega Ilija pomoći mnogo bolje. Sad ću te prebaciti na njega.",
+        type: 'text',
       });
 
-      // 2. Sačekaj 2 sekunde da poruka zvuči prirodno
+      // sačekaj 2s da poruka zvuči prirodno
       setTimeout(async () => {
-        console.log(`🔀 [TRANSFER] Attempting to transfer call ${callId} to ILU...`);
-        // 3. Transferuj na ILU preko Vapi transfer tool-a
         await sendVapiCommand(callId, 'transfer', {
-          to: "+381637434108",
-          whisper: "TEST CALL: Lead iz {{industry}}. Ime: {{firstName}}.",
+          to: '+381637434108', // broj ljudskog agenta
+          whisper: "Lead iz {{industry}}. Ime: {{firstName}}.",
         });
       }, 2000);
-    }, 15000); // 15 sekundi = 15000 ms
+    }, 165000); // 165s
 
-    // Sačuvaj timer da možeš da ga poništiš ako poziv završi ranije
-    callTimers.set(callId, timer);
+    // 2. Hard cut (180s)
+    const hardCutTimer = setTimeout(() => {
+      console.log(`🛑 [HARD CUT] 180s prošlo za ${callId}. Gasim poziv.`);
+      sendVapiCommand(callId, 'end', {});
+    }, 180000);
 
-    // Pali hard limit od 30 sekundi (auto hangup)
-    setTimeout(() => {
-      console.log(`🛑 [HARD LIMIT] 30 seconds reached for call ${callId}. Ending call.`);
-      sendVapiCommand(callId, 'hangup', {});
-    }, 30000);
+    // čuvamo oba timera
+    callTimers.set(callId, [transferTimer, hardCutTimer]);
   }
 
-  // Ako se poziv završi, poništi timer
+  // ✅ Kada se poziv završi — čistimo sve timere
   if (event === 'status-update' && message.status === 'ended') {
-    const timer = callTimers.get(callId);
-    if (timer) {
-      clearTimeout(timer);
+    const timers = callTimers.get(callId);
+    if (timers) {
+      timers.forEach(clearTimeout);
       callTimers.delete(callId);
-      console.log(`🧹 [CLEANUP] Timer cleared for call ${callId}`);
+      console.log(`🧹 [CLEANUP] Timers cleared for ${callId}`);
     }
   }
 
   res.status(200).send('OK');
 });
 
-// Health check ruta
+// Health check
 app.get('/', (req, res) => {
-  res.status(200).send('🚀 Vapi Timeout Server is ALIVE and ready for testing!');
+  res.status(200).send('🚀 Vapi Timeout Server is running!');
 });
 
-// Pokreni server
+// Start
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`✅ [SERVER] Webhook server is RUNNING on port ${PORT}`);
+  console.log(`✅ [SERVER] Running on port ${PORT}`);
 });
