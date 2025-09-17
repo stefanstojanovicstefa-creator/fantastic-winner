@@ -3,7 +3,7 @@ const express = require('express');
 const app = express();
 
 // Middleware da parsira JSON telo
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '10mb' })); // Povecavamo limit za velike payload-ove
 
 // Konfiguracija
 const VAPI_API_KEY = "5e83bb86-06fe-4dc2-80ed-05800f510ad7";
@@ -44,7 +44,7 @@ app.post('/vapi-webhook', async (req, res) => {
       }
 
       try {
-        // Ispravan Live Call Control endpoint
+        // Ispravan Live Call Control endpoint (na osnovu logova iz fajla)
         const controlUrl = `https://phone-call-websocket.aws-us-west-2-backend-production3.vapi.ai/${callIdFromHeader}/control`;
         console.log("🔍 [DEBUG] Pokušavam Live Call Control transfer na URL:", controlUrl);
 
@@ -54,12 +54,14 @@ app.post('/vapi-webhook', async (req, res) => {
             "Authorization": `Bearer ${VAPI_API_KEY}`,
             "Content-Type": "application/json"
           },
+          // Ažurirana poruka da bude konzistentna sa tool-om iz dashboarda
           body: JSON.stringify({
             "type": "transfer",
             "destination": {
               "type": "number",
               "number": OPERATOR_NUMBER
             },
+            // Poruka iz tvog tool-a (ID: 5c22c643-f2ca-4d71-a9eb-884b8e809d69)
             "content": "Da ti ne dužim — mislim da će ti moj kolega Ilija pomoći mnogo bolje. Sad ću te prebaciti na njega."
           })
         });
