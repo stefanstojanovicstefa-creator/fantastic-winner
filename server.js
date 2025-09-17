@@ -1,22 +1,29 @@
 const express = require('express');
-
 const app = express();
+
+// Middleware da parsira JSON telo
 app.use(express.json());
 
-const VAPI_API_KEY = "5e83bb86-06fe-4dc2-80ed-05800f510ad7";
-const OPERATOR_NUMBER = "+381637473108";
-const TRANSFER_AFTER_SECONDS = 120;
-
 app.post('/vapi-webhook', async (req, res) => {
+  console.log("📥 Raw headers:", req.headers);
+  console.log("📥 Raw body string:", JSON.stringify(req.body, null, 2));
+
   const event = req.body;
 
-  console.log("📡 [WEBHOOK] Primljen event:", event?.type);
+  console.log("📡 [WEBHOOK] Primljen event type:", event?.type || "NEMA TYPE");
 
+  // ✅ Ako je poziv upravo započeo
   if (event?.type === "call.started") {
-    const callId = event.data.id;
+    const callId = event.data?.id;
 
-    console.log(`📞 Poziv ${callId} je počeo. Startujem timer za ${TRANSFER_AFTER_SECONDS} sekundi.`);
+    if (!callId) {
+      console.error("❌ callId nije pronađen u eventu!");
+      return res.status(400).send("Bad Request: callId nedostaje");
+    }
 
+    console.log(`📞 Poziv ${callId} je počeo. Startujem timer za 120 sekundi.`);
+
+    // Pokreni timer
     setTimeout(async () => {
       console.log(`⏰ Vreme isteklo za poziv ${callId}. Pokrećem transfer...`);
 
@@ -24,7 +31,7 @@ app.post('/vapi-webhook', async (req, res) => {
         const response = await fetch("https://api.vapi.ai/call/transfer", {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${VAPI_API_KEY}`,
+            "Authorization": `Bearer 5e83bb86-06fe-4dc2-80ed-05800f510ad7`,
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
@@ -32,7 +39,7 @@ app.post('/vapi-webhook', async (req, res) => {
             destinations: [
               {
                 type: "number",
-                number: OPERATOR_NUMBER
+                number: "+381637473108"
               }
             ]
           })
@@ -43,7 +50,7 @@ app.post('/vapi-webhook', async (req, res) => {
       } catch (error) {
         console.error("❌ Greška prilikom transfera:", error.message);
       }
-    }, TRANSFER_AFTER_SECONDS * 1000);
+    }, 120 * 1000);
   }
 
   res.status(200).send({ ok: true });
@@ -55,5 +62,5 @@ app.get('/', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Server pokrenut na portu ${PORT}`);
+  console.log(`✅ Server pokrenut na http://localhost:${PORT}`);
 });
