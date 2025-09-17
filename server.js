@@ -5,16 +5,16 @@ const app = express();
 app.use(express.json());
 
 app.post('/vapi-webhook', async (req, res) => {
-  // 🔥 LOGUJEMO CEO BODY DA VIDIMO ŠTA VAPI ŠALJE
+  // 🔥 LOGUJEMO CEO BODY DA VIDIMO STA VAPI SALJE
   console.log('📡 [RAW BODY]', JSON.stringify(req.body, null, 2));
 
-  const request = req.body;
+  // ✅ POKUSAVAMO DA PROCITAMO TYPE IZ RAZLICITIH MESTA
+  const eventType = req.body?.type || req.body?.message?.type;
 
-  // ✅ Sada će ovo raditi
-  console.log('📡 [WEBHOOK TYPE]', request?.type);
+  console.log('📡 [WEBHOOK TYPE]', eventType);
 
-  // ✅ Ako Vapi traži destinaciju za transfer
-  if (request?.type === 'transfer-destination-request') {
+  // ✅ Ako Vapi trazi destinaciju za transfer
+  if (eventType === 'transfer-destination-request') {
     console.log('🔀 [TRANSFER REQUEST] Sending dynamic destination...');
 
     return res.json({
