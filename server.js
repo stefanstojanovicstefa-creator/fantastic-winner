@@ -6,12 +6,11 @@ const app = express();
 app.use(express.json({ limit: '10mb' }));
 
 // Konfiguracija
-const VAPI_API_KEY = "5e83bb86-06fe-4dc2-80ed-05800f510ad7";
 // URL ka kojem asistent šalje webhook-ove (tvoj server)
-// Ovo mora da bude tačan URL koji je konfigurisan u asistentovoj "server.url" opciji u Vapi dashboardu
+// OVO MORA BITI TACAN URL koji je konfigurisan u asistentovoj "server.url" opciji u Vapi dashboardu
 const ASSISTANT_SERVER_URL = "https://fantastic-winner-1.onrender.com/vapi-webhook"; 
 const TRANSFER_AFTER_SECONDS = 15;
-// callId -> { timerId, isTransferred }
+// callId -> { timerId, isSignalSent }
 const ACTIVE_CALLS = new Map();
 
 // Webhook endpoint - prima webhook-ove od Vapi-a
@@ -35,67 +34,65 @@ app.post('/vapi-webhook', async (req, res) => {
     return res.status(200).send({ ok: true });
   }
 
-  // Standardna logika za detekciju poziva
-  // Reagujemo na session.created ili call.started
-  if (eventType === "session.created" || eventType === "call.started") {
-    // Proveravamo da li smo već pokrenuli timer/transfer za ovaj poziv
-    if (ACTIVE_CALLS.has(callIdFromHeader)) {
-      const callInfo = ACTIVE_CALLS.get(callIdFromHeader);
-      if (callInfo.isTransferred) {
-        console.log(`🔁 Poziv ${callIdFromHeader} je već signaliziran za transfer.`);
-      } else {
-        console.log(`🔁 Već poznat poziv ${callIdFromHeader}. Timer već aktivan.`);
-      }
+  // --- LOGIKA ZA POKRETANJE TIMERA NA PRVI WEBHOOK ---
+  // Proveravamo da li smo već pokrenuli timer/signal za ovaj poziv
+  if (ACTIVE_CALLS.has(callIdFromHeader)) {
+    const callInfo = ACTIVE_CALLS.get(callIdFromHeader);
+    if (callInfo.isSignalSent) {
+      console.log(`🔁 Signal za transfer je već poslat za poziv ${callIdFromHeader}.`);
     } else {
-      // Novi poziv - pokrećemo timer
-      console.log(`📞 Novi poziv detektovan preko headera (x-call-id: ${callIdFromHeader}). Startujem timer za ${TRANSFER_AFTER_SECONDS} sekundi.`);
-      
-      const timerId = setTimeout(async () => {
-        console.log(`⏰ Vreme isteklo za poziv ${callIdFromHeader}. Šaljem signal za transfer...`);
-        
-        // Ažuriramo stanje
-        const callInfo = ACTIVE_CALLS.get(callIdFromHeader);
-        if (callInfo) {
-          callInfo.isTransferred = true;
-        }
-
-        try {
-          // Slanje signala nazad asistentu na njegov server.url
-          // Ovo je ekvivalent "obavesti asistenta da je vreme"
-          const signalResponse = await fetch(ASSISTANT_SERVER_URL, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            // Signal koji asistent treba da prepozna
-            body: JSON.stringify({
-              "type": "external_transfer_signal",
-              "callId": callIdFromHeader, // Dodatna informacija ako treba
-              "timestamp": new Date().toISOString()
-            })
-          });
-
-          if (signalResponse.ok) {
-            console.log(`✅ Signal za transfer uspešno poslat nazad asistentu za poziv ${callIdFromHeader}.`);
-          } else {
-            const signalErrorText = await signalResponse.text();
-            console.error(`⚠️ Greška pri slanju signala. Status: ${signalResponse.status}`, signalErrorText);
-          }
-
-        } catch (error) {
-          console.error("❌ Greška prilikom slanja signala za transfer za poziv", callIdFromHeader, ":", error.message);
-          console.error(" Stack trace:", error.stack);
-        }
-      }, TRANSFER_AFTER_SECONDS * 1000);
-
-      // Sačuvaj informacije o pozivu
-      ACTIVE_CALLS.set(callIdFromHeader, { timerId, isTransferred: false });
-      console.log(`✅ Timer za poziv ${callIdFromHeader} je uspešno postavljen.`);
+      console.log(`🔁 Timer za poziv ${callIdFromHeader} je već aktivan.`);
     }
   } else {
-    // Logujemo druge eventove ako želimo, ali ne reagujemo
-    console.log(`📡 [WEBHOOK] Primljen event type: ${eventType} za poziv ${callIdFromHeader}`);
+    // Novi poziv - pokrećemo timer
+    console.log(`📞 Novi poziv detektovan preko headera (x-call-id: ${callIdFromHeader}). Startujem timer za ${TRANSFER_AFTER_SECONDS} sekundi.`);
+    
+    const timerId = setTimeout(async () => {
+      console.log(`⏰ Vreme isteklo za poziv ${callIdFromHeader}. Šaljem signal za transfer...`);
+      
+      // Ažuriramo stanje
+      const callInfo = ACTIVE_CALLS.get(callIdFromHeader);
+      if (callInfo) {
+        callInfo.isSignalSent = true;
+      }
+
+      try {
+        // Slanje signala nazad asistentu na njegov server.url
+        const signalResponse = await fetch(ASSISTANT_SERVER_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          // Signal koji asistent treba da prepozna
+          body: JSON.stringify({
+            "type": "external_transfer_signal",
+            "callId": callIdFromHeader,
+            "timestamp": new Date().toISOString(),
+            "reason": "15s_timeout"
+          })
+        });
+
+        if (signalResponse.ok) {
+          console.log(`✅ Signal za transfer uspešno poslat nazad asistentu za poziv ${callIdFromHeader}.`);
+        } else {
+          const signalErrorText = await signalResponse.text();
+          console.error(`⚠️ Greška pri slanju signala. Status: ${signalResponse.status}`, signalErrorText);
+        }
+
+      } catch (error) {
+        console.error("❌ Greška prilikom slanja signala za transfer za poziv", callIdFromHeader, ":", error.message);
+        // Ne logujem stack trace da ne zagusim logove
+      }
+    }, TRANSFER_AFTER_SECONDS * 1000);
+
+    // Sačuvaj informacije o pozivu
+    ACTIVE_CALLS.set(callIdFromHeader, { timerId, isSignalSent: false });
+    console.log(`✅ Timer za poziv ${callIdFromHeader} je uspešno postavljen.`);
   }
+  // --- KRAJ LOGIKE ZA POKRETANJE TIMERA ---
+
+  // Logujemo sve eventove za debug, ali ne reagujemo
+  console.log(`📡 [WEBHOOK] Primljen event type: ${eventType} za poziv ${callIdFromHeader}`);
 
   res.status(200).send({ ok: true });
 });
