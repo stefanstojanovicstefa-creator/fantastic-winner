@@ -36,6 +36,7 @@ app.post('/vapi-webhook', async (req, res) => {
   }
 
   // Standardna logika za detekciju poziva
+  // Reagujemo na session.created ili call.started
   if (eventType === "session.created" || eventType === "call.started") {
     // Proveravamo da li smo već pokrenuli timer/transfer za ovaj poziv
     if (ACTIVE_CALLS.has(callIdFromHeader)) {
@@ -65,9 +66,6 @@ app.post('/vapi-webhook', async (req, res) => {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              // Opcionalno: Prosledi callId ako server treba da ga koristi
-              // Ovde koristimo custom header jer nema smisla slati Bearer token samom sebi
-              // "x-call-id": callIdFromHeader 
             },
             // Signal koji asistent treba da prepozna
             body: JSON.stringify({
