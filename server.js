@@ -51,10 +51,9 @@ app.post('/vapi-webhook', async (req, res) => {
 
       try {
         // Ispravan Live Call Control endpoint (na osnovu logova iz fajla)
-        // U logovima se sada pojavljuje i production1, proveri koji je tačan za trenutni poziv
-        // Na osnovu poslednjeg primera iz dokumentacije, koristićemo production1
+        // Koristimo production1 kao u primeru iz zvanične dokumentacije
+        // Ako ne radi, pokušaj i sa production3 (videli smo oba u logovima)
         const controlUrl = `https://phone-call-websocket.aws-us-west-2-backend-production1.vapi.ai/${callIdFromHeader}/control`;
-        // Ako production1 ne radi, pokušaj i sa production3
         // const controlUrl = `https://phone-call-websocket.aws-us-west-2-backend-production3.vapi.ai/${callIdFromHeader}/control`;
         console.log("🔍 [DEBUG] Pokušavam Live Call Control add-message na URL:", controlUrl);
 
