@@ -51,15 +51,13 @@ app.post('/vapi-webhook', async (req, res) => {
 
       try {
         // Ispravan Live Call Control endpoint (na osnovu logova iz fajla)
-        // Koristimo production1 kao u primeru iz zvanične dokumentacije
-        // Ako ne radi, pokušaj i sa production3 (videli smo oba u logovima)
+        // Koristimo production1 kao u primeru iz zvanične dokumentacije i Vapi logova
         const controlUrl = `https://phone-call-websocket.aws-us-west-2-backend-production1.vapi.ai/${callIdFromHeader}/control`;
-        // const controlUrl = `https://phone-call-websocket.aws-us-west-2-backend-production3.vapi.ai/${callIdFromHeader}/control`;
         console.log("🔍 [DEBUG] Pokušavam Live Call Control add-message na URL:", controlUrl);
 
         // Slanje "add-message" koji bi asistent trebalo da prepozna
         // Pretpostavka je da ova poruka aktivira logiku iz prompta:
-        // "Ako primiš poruku od servera ... sa sadržajem `external_transfer_signal`..."
+        // "ko primiš poruku od servera (webhook) sa sadržajem `{ \"type\": \"external_transfer_signal\" }`..."
         const response = await fetch(controlUrl, {
           method: "POST",
           headers: {
