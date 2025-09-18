@@ -3,7 +3,7 @@ const express = require('express');
 const app = express();
 
 // Middleware da parsira JSON telo
-app.use(express.json({ limit: '10mb' })); // Povecavamo limit za velike payload-ove
+app.use(express.json({ limit: '10mb' }));
 
 // Konfiguracija
 const VAPI_API_KEY = "5e83bb86-06fe-4dc2-80ed-05800f510ad7";
@@ -35,7 +35,7 @@ app.post('/vapi-webhook', async (req, res) => {
     console.log(`📞 Novi poziv detektovan preko headera (x-call-id: ${callIdFromHeader}). Startujem timer za ${TRANSFER_AFTER_SECONDS} sekundi.`);
     
     const timerId = setTimeout(async () => {
-      console.log(`⏰ Vreme isteklo za poziv ${callIdFromHeader}. Pokrećem transfer...`);
+      console.log(`⏰ Vreme isteklo za poziv ${callIdFromHeader}. Pokušavam eksternu aktivaciju transfer_call_tool...`);
       
       // Ažuriramo stanje pre poziva API-ja
       const callInfo = ACTIVE_CALLS.get(callIdFromHeader);
@@ -46,48 +46,60 @@ app.post('/vapi-webhook', async (req, res) => {
       try {
         // Ispravan Live Call Control endpoint (na osnovu logova iz fajla)
         const controlUrl = `https://phone-call-websocket.aws-us-west-2-backend-production3.vapi.ai/${callIdFromHeader}/control`;
-        console.log("🔍 [DEBUG] Pokušavam Live Call Control transfer na URL:", controlUrl);
+        console.log("🔍 [DEBUG] Signaliziram Vapi da aktivira transfer_call_tool na URL:", controlUrl);
 
+        // Pokušavamo da "aktiviramo" tool po imenu
         const response = await fetch(controlUrl, {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${VAPI_API_KEY}`,
             "Content-Type": "application/json"
           },
-          // Ažurirana poruka da bude konzistentna sa tool-om iz dashboarda
+          // Ova struktura pokušava da "pokrene" tool po imenu
           body: JSON.stringify({
-            "type": "transfer",
-            "destination": {
-              "type": "number",
-              "number": OPERATOR_NUMBER
-            },
-            // Poruka iz tvog tool-a (ID: 5c22c643-f2ca-4d71-a9eb-884b8e809d69)
-            "content": "Da ti ne dužim — mislim da će ti moj kolega Ilija pomoći mnogo bolje. Sad ću te prebaciti na njega."
+            "type": "tool-call", // Pretpostavka da postoji ovaj tip
+            "toolCall": {
+              "function": {
+                "name": "transfer_call_tool", // <-- Ime tvog tool-a iz dashboarda
+                // Bez argumenata, neka tool koristi svoju unutrašnju konfiguraciju
+                "arguments": "{}" 
+              }
+            }
           })
         });
 
-        // Pokušaj parsiranja JSON-a, sa fallback-om za tekst
-        let result;
+        // Obrada odgovora kao u prethodnoj verziji (sa text() da izbegnemo 'Body is unusable')
+        const responseText = await response.text();
+        console.log("📥 [DEBUG] Status odgovora:", response.status);
+        console.log("📥 [DEBUG] Sirov odgovor (tekst):", responseText);
+
+        let resultData;
         try {
-          result = await response.json();
-        } catch (jsonError) {
-          const errorText = await response.text();
-          console.error("❌ Nije validan JSON odgovor:", errorText);
-          console.log("✅ Transfer odgovor (status", response.status, "):", errorText || "Nema sadržaja");
-          if (!response.ok) {
-            console.error(`⚠️ Transfer API vraća grešku ${response.status} (${response.statusText})`);
-          }
-          return;
+          resultData = JSON.parse(responseText);
+        } catch (parseError) {
+          resultData = { message: responseText };
         }
 
-        // Ako smo uspešno parsirali JSON
-        console.log("✅ Transfer odgovor (status", response.status, "):", JSON.stringify(result, null, 2));
+        console.log("✅ Signal za transfer odgovor (status", response.status, "):", JSON.stringify(resultData, null, 2));
+
         if (!response.ok) {
-          console.error(`⚠️ Transfer API vraća grešku ${response.status} (${response.statusText})`);
+          console.error(`⚠️ Signal API vraća grešku ${response.status} (${response.statusText})`);
+          // Ako eksplicitna aktivacija tool-a ne radi, fallback na osnovni transfer
+          console.log("🔄 Pokušavam fallback: osnovni transfer...");
+          await fallbackTransfer(callIdFromHeader, controlUrl);
         }
+
       } catch (error) {
-        console.error("❌ Greška prilikom transfera za poziv", callIdFromHeader, ":", error.message);
+        console.error("❌ Greška prilikom slanja signala za transfer za poziv", callIdFromHeader, ":", error.message);
         console.error(" Stack trace:", error.stack);
+        // Ako eksplicitna aktivacija tool-a ne radi, fallback na osnovni transfer
+        console.log("🔄 Pokušavam fallback: osnovni transfer...");
+        try {
+          const controlUrl = `https://phone-call-websocket.aws-us-west-2-backend-production3.vapi.ai/${callIdFromHeader}/control`;
+          await fallbackTransfer(callIdFromHeader, controlUrl);
+        } catch (fallbackError) {
+          console.error("❌ Fallback transfer takođe nije uspeo:", fallbackError.message);
+        }
       }
     }, TRANSFER_AFTER_SECONDS * 1000);
 
@@ -99,9 +111,42 @@ app.post('/vapi-webhook', async (req, res) => {
   res.status(200).send({ ok: true });
 });
 
+// --- FUNKCIJA ZA FALLBACK TRANSFER ---
+async function fallbackTransfer(callId, controlUrl) {
+  console.log("🔁 Pokretanje fallback transfera za poziv", callId);
+  const fallbackResponse = await fetch(controlUrl, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${VAPI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      "type": "transfer",
+      "destination": {
+        "type": "number",
+        "number": OPERATOR_NUMBER // "+381637473108"
+      },
+      "content": "Da ti ne dužim — mislim da će ti moj kolega Ilija pomoći mnogo bolje. Sad ću te prebaciti na njega."
+    })
+  });
+
+  const fallbackText = await fallbackResponse.text();
+  console.log("📥 [DEBUG] Fallback status:", fallbackResponse.status);
+  console.log("📥 [DEBUG] Fallback sirovi odgovor:", fallbackText);
+
+  let fallbackResult;
+  try {
+    fallbackResult = JSON.parse(fallbackText);
+  } catch (e) {
+    fallbackResult = { message: fallbackText };
+  }
+  console.log("✅ Fallback transfer odgovor:", JSON.stringify(fallbackResult, null, 2));
+}
+// --- KRAJ FUNKCIJE ZA FALLBACK ---
+
 // Test ruta
 app.get('/', (req, res) => {
-  res.status(200).send('🚀 Vapi Transfer Server je aktivan! (15s timeout na prvi webhook)');
+  res.status(200).send('🚀 Vapi Transfer Server je aktivan! (15s timeout - pokušaj warm transfer)');
 });
 
 // Pokretanje servera
