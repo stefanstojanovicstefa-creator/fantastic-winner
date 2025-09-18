@@ -41,7 +41,7 @@ app.post('/vapi-webhook', async (req, res) => {
     console.log(`📞 Novi poziv detektovan preko headera (x-call-id: ${callIdFromHeader}). Startujem timer za ${TRANSFER_AFTER_SECONDS} sekundi.`);
     
     const timerId = setTimeout(async () => {
-      console.log(`⏰ Vreme isteklo za poziv ${callIdFromHeader}. Šaljem server-message signal za transfer...`);
+      console.log(`⏰ Vreme isteklo za poziv ${callIdFromHeader}. Šaljem add-message signal za transfer...`);
       
       // Ažuriramo stanje
       const callInfo = ACTIVE_CALLS.get(callIdFromHeader);
@@ -52,14 +52,15 @@ app.post('/vapi-webhook', async (req, res) => {
       try {
         // Ispravan Live Call Control endpoint (na osnovu logova iz fajla)
         // U logovima se sada pojavljuje i production1, proveri koji je tačan za trenutni poziv
-        const controlUrl = `https://phone-call-websocket.aws-us-west-2-backend-production3.vapi.ai/${callIdFromHeader}/control`;
-        // Ako production3 ne radi, pokušaj i sa production1 (videli smo oba u logovima)
-        // const controlUrl = `https://phone-call-websocket.aws-us-west-2-backend-production1.vapi.ai/${callIdFromHeader}/control`;
-        console.log("🔍 [DEBUG] Pokušavam Live Call Control server-message na URL:", controlUrl);
+        // Na osnovu poslednjeg primera iz dokumentacije, koristićemo production1
+        const controlUrl = `https://phone-call-websocket.aws-us-west-2-backend-production1.vapi.ai/${callIdFromHeader}/control`;
+        // Ako production1 ne radi, pokušaj i sa production3
+        // const controlUrl = `https://phone-call-websocket.aws-us-west-2-backend-production3.vapi.ai/${callIdFromHeader}/control`;
+        console.log("🔍 [DEBUG] Pokušavam Live Call Control add-message na URL:", controlUrl);
 
-        // Slanje "server message" koji bi asistent trebalo da prepozna
+        // Slanje "add-message" koji bi asistent trebalo da prepozna
         // Pretpostavka je da ova poruka aktivira logiku iz prompta:
-        // "Ako primiš poruku od servera (webhook) sa sadržajem `{ \"type\": \"external_transfer_signal\" }`..."
+        // "Ako primiš poruku od servera ... sa sadržajem `external_transfer_signal`..."
         const response = await fetch(controlUrl, {
           method: "POST",
           headers: {
@@ -67,12 +68,14 @@ app.post('/vapi-webhook', async (req, res) => {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            "type": "server-message", // Tip poruke za server-side komunikaciju
+            "type": "add-message",
             "message": {
-              "type": "external_transfer_signal", // Poruka koju asistent očekuje
-              "callId": callIdFromHeader,
-              "reason": "15s_timeout_external_control"
-            }
+              "role": "system",
+              // Ovaj sadržaj treba da prepozna tvoj asistent iz prompta
+              "content": "external_transfer_signal"
+            },
+            // Ovo je ključno da bi asistent obradio poruku
+            "triggerResponseEnabled": true 
           })
         });
 
@@ -87,15 +90,16 @@ app.post('/vapi-webhook', async (req, res) => {
           resultData = { message: responseText };
         }
 
-        console.log("✅ Server-message odgovor (status", response.status, "):", JSON.stringify(resultData, null, 2));
+        console.log("✅ Add-message odgovor (status", response.status, "):", JSON.stringify(resultData, null, 2));
 
         if (!response.ok) {
-          console.error(`⚠️ Server-message API vraća grešku ${response.status} (${response.statusText})`);
+          console.error(`⚠️ Add-message API vraća grešku ${response.status} (${response.statusText})`);
         }
 
       } catch (error) {
-        console.error("❌ Greška prilikom slanja server-message za transfer za poziv", callIdFromHeader, ":", error.message);
-        // Ne logujem stack trace da ne zagusim logove
+        console.error("❌ Greška prilikom slanja add-message za transfer za poziv", callIdFromHeader, ":", error.message);
+        // Logujemo stack trace za debugging
+        console.error(" Stack trace:", error.stack);
       }
     }, TRANSFER_AFTER_SECONDS * 1000);
 
@@ -110,7 +114,7 @@ app.post('/vapi-webhook', async (req, res) => {
 
 // Test ruta
 app.get('/', (req, res) => {
-  res.status(200).send('🚀 Vapi Signal Server je aktivan! (15s timeout - server-message)');
+  res.status(200).send('🚀 Vapi Signal Server je aktivan! (15s timeout - add-message)');
 });
 
 // Pokretanje servera
